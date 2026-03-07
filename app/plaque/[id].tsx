@@ -20,11 +20,18 @@ import {
 import { POINTS_PER_CHECKIN, POINTS_PER_PHOTO, POINTS_PER_QUIZ, getEarnedBadges } from "../../lib/badges";
 import type { Plaque, QuizQuestion } from "../../types";
 
+interface AiQuiz {
+  question: string;
+  options: string[];
+  correct_index: number;
+}
+
 export default function PlaqueDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [plaque, setPlaque] = useState<Plaque | null>(null);
   const [narrative, setNarrative] = useState<string | null>(null);
   const [quiz, setQuiz] = useState<QuizQuestion | null>(null);
+  const [aiQuiz, setAiQuiz] = useState<AiQuiz | null>(null);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [quizAlreadyAttempted, setQuizAlreadyAttempted] = useState(false);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
@@ -177,6 +184,8 @@ export default function PlaqueDetail() {
       body: {
         title: plaque.title,
         description: plaque.description,
+        address: plaque.address,
+        year_erected: plaque.year_erected,
       },
     });
 
@@ -186,17 +195,24 @@ export default function PlaqueDetail() {
       return;
     }
     setNarrative(data.narrative);
+
+    // Use AI-generated quiz as fallback when no seeded quiz exists
+    if (!quiz && data.quiz) {
+      setAiQuiz(data.quiz);
+    }
   };
 
+  const activeQuiz = quiz ?? aiQuiz;
+
   const handleQuizAnswer = async (index: number) => {
-    if (!quiz || quizAlreadyAttempted) return;
+    if (!activeQuiz || quizAlreadyAttempted) return;
     setSelectedAnswer(index);
 
-    const isCorrect = index === quiz.correct_index;
+    const isCorrect = index === activeQuiz.correct_index;
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      // Record attempt (unique constraint prevents duplicates)
+    if (user && quiz) {
+      // Record attempt for seeded quizzes (unique constraint prevents duplicates)
       await supabase.from("quiz_attempts").insert({
         user_id: user.id,
         quiz_question_id: quiz.id,
@@ -212,7 +228,7 @@ export default function PlaqueDetail() {
     setQuizAlreadyAttempted(true);
 
     if (isCorrect) {
-      Alert.alert("Correct!", `+${POINTS_PER_QUIZ} points`);
+      Alert.alert("Correct!", quiz ? `+${POINTS_PER_QUIZ} points` : "Well done!");
     } else {
       Alert.alert("Incorrect", "Better luck next time!");
     }
@@ -285,17 +301,19 @@ export default function PlaqueDetail() {
         )}
 
         {/* Quiz */}
-        {quiz && (
+        {activeQuiz && (
           <View style={styles.quizBox}>
-            <Text style={styles.quizTitle}>Quiz</Text>
-            <Text style={styles.quizQuestion}>{quiz.question}</Text>
-            {(quiz.options as string[]).map((option, i) => (
+            <Text style={styles.quizTitle}>
+              {quiz ? "Quiz" : "AI Quiz"}
+            </Text>
+            <Text style={styles.quizQuestion}>{activeQuiz.question}</Text>
+            {(activeQuiz.options as string[]).map((option, i) => (
               <TouchableOpacity
                 key={i}
                 style={[
                   styles.quizOption,
                   selectedAnswer === i &&
-                    (i === quiz.correct_index
+                    (i === activeQuiz.correct_index
                       ? styles.quizCorrect
                       : styles.quizIncorrect),
                 ]}
