@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "Plaque App",
+    "slug": "plaque-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "plaque-app",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "We need your location to find nearby plaques and verify check-ins.",
+        "NSCameraUsageDescription": "We need camera access to photograph plaques.",
+        "NSPhotoLibraryUsageDescription": "We need photo library access to upload plaque photos."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        { "locationWhenInUsePermission": "We need your location to find nearby plaques." }
+      ],
+      [
+        "expo-image-picker",
+        { "photosPermission": "We need photo access to upload plaque photos." }
+      ],
+      [
+        "expo-camera",
+        { "cameraPermission": "We need camera access to photograph plaques." }
+      ]
+    ]
+  }
+}
