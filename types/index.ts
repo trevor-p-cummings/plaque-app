@@ -4,6 +4,8 @@ export interface Plaque {
   description: string;
   latitude: number;
   longitude: number;
+  address: string | null;
+  year_erected: number | null;
   image_url: string | null;
   created_at: string;
 }
@@ -22,6 +24,15 @@ export interface QuizQuestion {
   question: string;
   options: string[];
   correct_index: number;
+}
+
+export interface QuizAttempt {
+  id: string;
+  user_id: string;
+  quiz_question_id: string;
+  selected_index: number;
+  correct: boolean;
+  created_at: string;
 }
 
 export interface UserProfile {

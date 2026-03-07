@@ -26,6 +26,7 @@ export default function PlaqueDetail() {
   const [narrative, setNarrative] = useState<string | null>(null);
   const [quiz, setQuiz] = useState<QuizQuestion | null>(null);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
+  const [quizAlreadyAttempted, setQuizAlreadyAttempted] = useState(false);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [checkedIn, setCheckedIn] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -33,22 +34,42 @@ export default function PlaqueDetail() {
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
-        .from("plaques")
-        .select("*")
-        .eq("id", id)
-        .single();
+      const [{ data: plaqueData }, { data: quizData }] = await Promise.all([
+        supabase.from("plaques").select("*").eq("id", id).single(),
+        supabase.from("quiz_questions").select("*").eq("plaque_id", id).limit(1).single(),
+      ]);
 
-      if (data) setPlaque(data as Plaque);
-
-      const { data: quizData } = await supabase
-        .from("quiz_questions")
-        .select("*")
-        .eq("plaque_id", id)
-        .limit(1)
-        .single();
-
+      if (plaqueData) setPlaque(plaqueData as Plaque);
       if (quizData) setQuiz(quizData as QuizQuestion);
+
+      // Check if user already checked in or attempted the quiz
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: existingCheckIn } = await supabase
+          .from("check_ins")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("plaque_id", id)
+          .limit(1)
+          .maybeSingle();
+
+        if (existingCheckIn) setCheckedIn(true);
+
+        if (quizData) {
+          const { data: existingAttempt } = await supabase
+            .from("quiz_attempts")
+            .select("selected_index")
+            .eq("user_id", user.id)
+            .eq("quiz_question_id", quizData.id)
+            .maybeSingle();
+
+          if (existingAttempt) {
+            setSelectedAnswer(existingAttempt.selected_index);
+            setQuizAlreadyAttempted(true);
+          }
+        }
+      }
+
       setLoading(false);
     })();
   }, [id]);
@@ -88,6 +109,11 @@ export default function PlaqueDetail() {
     });
 
     if (error) {
+      if (error.code === "23505") {
+        setCheckedIn(true);
+        Alert.alert("Already Checked In", "You've already visited this plaque.");
+        return;
+      }
       Alert.alert("Error", "Could not check in. Try again.");
       return;
     }
@@ -163,14 +189,29 @@ export default function PlaqueDetail() {
   };
 
   const handleQuizAnswer = async (index: number) => {
-    if (!quiz) return;
+    if (!quiz || quizAlreadyAttempted) return;
     setSelectedAnswer(index);
 
-    if (index === quiz.correct_index) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
+    const isCorrect = index === quiz.correct_index;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      // Record attempt (unique constraint prevents duplicates)
+      await supabase.from("quiz_attempts").insert({
+        user_id: user.id,
+        quiz_question_id: quiz.id,
+        selected_index: index,
+        correct: isCorrect,
+      });
+
+      if (isCorrect) {
         await supabase.rpc("increment_points", { user_id: user.id, amount: POINTS_PER_QUIZ });
       }
+    }
+
+    setQuizAlreadyAttempted(true);
+
+    if (isCorrect) {
       Alert.alert("Correct!", `+${POINTS_PER_QUIZ} points`);
     } else {
       Alert.alert("Incorrect", "Better luck next time!");
@@ -193,6 +234,16 @@ export default function PlaqueDetail() {
 
       <View style={styles.content}>
         <Text style={styles.title}>{plaque.title}</Text>
+
+        <View style={styles.metaRow}>
+          {plaque.year_erected && (
+            <Text style={styles.metaBadge}>Est. {plaque.year_erected}</Text>
+          )}
+          {plaque.address && (
+            <Text style={styles.metaAddress}>{plaque.address}</Text>
+          )}
+        </View>
+
         <Text style={styles.description}>{plaque.description}</Text>
 
         {/* Check-in button */}
@@ -249,11 +300,16 @@ export default function PlaqueDetail() {
                       : styles.quizIncorrect),
                 ]}
                 onPress={() => handleQuizAnswer(i)}
-                disabled={selectedAnswer !== null}
+                disabled={quizAlreadyAttempted}
               >
                 <Text style={styles.quizOptionText}>{option}</Text>
               </TouchableOpacity>
             ))}
+            {quizAlreadyAttempted && (
+              <Text style={styles.quizAttempted}>
+                You have already answered this quiz.
+              </Text>
+            )}
           </View>
         )}
       </View>
@@ -266,7 +322,19 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   heroImage: { width: "100%", height: 200, resizeMode: "cover" },
   content: { padding: 16 },
-  title: { fontSize: 24, fontWeight: "bold", marginBottom: 8 },
+  title: { fontSize: 24, fontWeight: "bold", marginBottom: 4 },
+  metaRow: { flexDirection: "row", alignItems: "center", marginBottom: 12, gap: 8 },
+  metaBadge: {
+    fontSize: 13,
+    color: "#fff",
+    backgroundColor: "#1a73e8",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    overflow: "hidden",
+    fontWeight: "600",
+  },
+  metaAddress: { fontSize: 13, color: "#666", flexShrink: 1 },
   description: { fontSize: 16, color: "#444", lineHeight: 24, marginBottom: 16 },
   button: {
     backgroundColor: "#1a73e8",
@@ -318,4 +386,5 @@ const styles = StyleSheet.create({
   quizOptionText: { fontSize: 15 },
   quizCorrect: { backgroundColor: "#d4edda", borderColor: "#28a745" },
   quizIncorrect: { backgroundColor: "#f8d7da", borderColor: "#dc3545" },
+  quizAttempted: { fontSize: 13, color: "#888", fontStyle: "italic", marginTop: 4 },
 });
