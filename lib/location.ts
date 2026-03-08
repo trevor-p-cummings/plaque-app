@@ -29,4 +29,5 @@ export function distanceMeters(
 }
 
 /** Max distance in meters to count as a valid check-in */
-export const CHECK_IN_RADIUS = 10;
+// TODO: TESTING ONLY — revert to 10 before release
+export const CHECK_IN_RADIUS = 500;
